@@ -104,8 +104,8 @@ def train_net(net,
                         optimizer.step()
                         pbar.update(np.ceil(imgs.shape[0] / patchnum))
                         global_step += 1
-            except RuntimeError:
-                pass
+            except RuntimeError as e:
+                print(e)
             except Exception as e:
                 print(e)
 

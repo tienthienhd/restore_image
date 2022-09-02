@@ -70,10 +70,10 @@ class BasicDataset(Dataset):
 
     def __getitem__(self, i):
         img_file = self.imgfiles[i]
-        print(img_file)
         in_img = Image.open(img_file)
         # get image size
         w, h = in_img.size
+        print(w, h, img_file)
         # get ground truth images
         # parts = img_file.split('_')
         # base_name = ''
