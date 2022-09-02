@@ -80,55 +80,34 @@ def train_net(net,
 
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img') as pbar:
-            for batch in train_loader:
-                imgs_ = batch['image']
-                awb_gt_ = batch['gt-AWB']
-                # t_gt_ = batch['gt-T']
-                # s_gt_ = batch['gt-S']
-                # assert imgs_.shape[1] == net.n_channels * patchnum, \
-                #     f'Network has been defined with {net.n_channels} input channels, ' \
-                #     f'but loaded training images have {imgs_.shape[1] / patchnum} channels. Please check that ' \
-                #     'the images are loaded correctly.'
-                #
-                # assert awb_gt_.shape[1] == net.n_channels * patchnum, \
-                #     f'Network has been defined with {net.n_channels} input channels, ' \
-                #     f'but loaded AWB GT images have {awb_gt_.shape[1] / patchnum} channels. Please check that ' \
-                #     'the images are loaded correctly.'
+            try:
+                for batch in train_loader:
+                    imgs_ = batch['image']
+                    awb_gt_ = batch['gt-AWB']
 
-                # assert t_gt_.shape[1] == net.n_channels * patchnum, \
-                #     f'Network has been defined with {net.n_channels} input channels, ' \
-                #     f'but loaded Tungsten WB GT images have {t_gt_.shape[1] / patchnum} channels. Please check that ' \
-                #     'the images are loaded correctly.'
-                #
-                # assert s_gt_.shape[1] == net.n_channels * patchnum, \
-                #     f'Network has been defined with {net.n_channels} input channels, ' \
-                #     f'but loaded Shade WB GT images have {s_gt_.shape[1] / patchnum} channels. Please check that ' \
-                #     'the images are loaded correctly.'
+                    for j in range(patchnum):
+                        imgs = imgs_[:, (j * 3): 3 + (j * 3), :, :]
+                        awb_gt = awb_gt_[:, (j * 3): 3 + (j * 3), :, :]
 
-                for j in range(patchnum):
-                    imgs = imgs_[:, (j * 3): 3 + (j * 3), :, :]
-                    awb_gt = awb_gt_[:, (j * 3): 3 + (j * 3), :, :]
-                    # t_gt = t_gt_[:, (j * 3): 3 + (j * 3), :, :]
-                    # s_gt = s_gt_[:, (j * 3): 3 + (j * 3), :, :]
+                        imgs = imgs.to(device=device, dtype=torch.float32)
+                        awb_gt = awb_gt.to(device=device, dtype=torch.float32)
 
-                    imgs = imgs.to(device=device, dtype=torch.float32)
-                    awb_gt = awb_gt.to(device=device, dtype=torch.float32)
-                    # t_gt = t_gt.to(device=device, dtype=torch.float32)
-                    # s_gt = s_gt.to(device=device, dtype=torch.float32)
+                        imgs_pred = net(imgs)
+                        loss = mae_loss.compute(imgs_pred, awb_gt)
+                        epoch_loss += loss.item()
+                        if use_tb:
+                            writer.add_scalar('Loss/train', loss.item(), global_step)
 
-                    imgs_pred = net(imgs)
-                    # loss = mae_loss.compute(imgs_pred, torch.cat((awb_gt, t_gt, s_gt), dim=1))
-                    loss = mae_loss.compute(imgs_pred, awb_gt)
-                    epoch_loss += loss.item()
-                    if use_tb:
-                        writer.add_scalar('Loss/train', loss.item(), global_step)
-
-                    pbar.set_postfix(**{'loss (batch)': loss.item()})
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    pbar.update(np.ceil(imgs.shape[0] / patchnum))
-                    global_step += 1
+                        pbar.set_postfix(**{'loss (batch)': loss.item()})
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        pbar.update(np.ceil(imgs.shape[0] / patchnum))
+                        global_step += 1
+            except RuntimeError:
+                pass
+            except Exception as e:
+                print(e)
 
         if (epoch + 1) % validationFrequency == 0:
             if use_tb:
@@ -136,18 +115,14 @@ def train_net(net,
                     tag = tag.replace('.', '/')
                     writer.add_histogram('weights/' + tag, value.data.cpu().numpy(), global_step)
                     writer.add_histogram('grads/' + tag, value.grad.data.cpu().numpy(), global_step)
-            val_score = vald_net(net, val_loader, device)
-            logging.info('Validation MAE: {}'.format(val_score))
+            # val_score = vald_net(net, val_loader, device)
+            # logging.info('Validation MAE: {}'.format(val_score))
             if use_tb:
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
-                writer.add_scalar('Loss/test', val_score, global_step)
+                # writer.add_scalar('Loss/test', val_score, global_step)
                 writer.add_images('images', imgs, global_step)
                 writer.add_images('result-awb', imgs_pred[:, :3, :, :], global_step)
-                writer.add_images('result-t', imgs_pred[:, 3:6, :, :], global_step)
-                writer.add_images('result-s', imgs_pred[:, 6:, :, :], global_step)
                 writer.add_images('GT_awb', awb_gt, global_step)
-                # writer.add_images('GT-t', t_gt, global_step)
-                # writer.add_images('GT-s', s_gt, global_step)
 
         scheduler.step()
 
@@ -165,10 +140,10 @@ def train_net(net,
     torch.save(net.state_dict(), 'models/' + 'net.pth')
     logging.info('Saved trained model!')
     logging.info('Saving each auto-encoder model separately')
-    net_awb, net_t, net_s = splitter.splitNetworks(net)
-    torch.save(net_awb.state_dict(), 'models/' + 'net_awb.pth')
-    torch.save(net_t.state_dict(), 'models/' + 'net_t.pth')
-    torch.save(net_s.state_dict(), 'models/' + 'net_s.pth')
+    # net_awb, net_t, net_s = splitter.splitNetworks(net)
+    # torch.save(net_awb.state_dict(), 'models/' + 'net_awb.pth')
+    # torch.save(net_t.state_dict(), 'models/' + 'net_t.pth')
+    # torch.save(net_s.state_dict(), 'models/' + 'net_s.pth')
     logging.info('Saved trained models!')
     if use_tb:
         writer.close()
@@ -185,41 +160,15 @@ def vald_net(net, loader, device):
         for batch in loader:
             imgs_ = batch['image']
             awb_gt_ = batch['gt-AWB']
-            # t_gt_ = batch['gt-T']
-            # s_gt_ = batch['gt-S']
             patchnum = imgs_.shape[1] / 3
-            assert imgs_.shape[1] == net.n_channels * patchnum, \
-                f'Network has been defined with {net.n_channels} input channels, ' \
-                f'but loaded training images have {imgs_.shape[1] / patchnum} channels. Please check that ' \
-                'the images are loaded correctly.'
-
-            assert awb_gt_.shape[1] == net.n_channels * patchnum, \
-                f'Network has been defined with {net.n_channels} input channels, ' \
-                f'but loaded AWB GT images have {awb_gt_.shape[1] / patchnum} channels. Please check that ' \
-                'the images are loaded correctly.'
-
-            # assert t_gt_.shape[1] == net.n_channels * patchnum, \
-            #     f'Network has been defined with {net.n_channels} input channels, ' \
-            #     f'but loaded Tungsten WB GT images have {t_gt_.shape[1] / patchnum} channels. Please check that ' \
-            #     'the images are loaded correctly.'
-            #
-            # assert s_gt_.shape[1] == net.n_channels * patchnum, \
-            #     f'Network has been defined with {net.n_channels} input channels, ' \
-            #     f'but loaded Shade WB GT images have {s_gt_.shape[1] / patchnum} channels. Please check that ' \
-            #     'the images are loaded correctly.'
 
             imgs = imgs_[:, 0:3, :, :]
             awb_gt = awb_gt_[:, 0:3, :, :]
-            # t_gt = t_gt_[:, 0:3, :, :]
-            # s_gt = s_gt_[:, 0:3, :, :]
             imgs = imgs.to(device=device, dtype=torch.float32)
             awb_gt = awb_gt.to(device=device, dtype=torch.float32)
-            # t_gt = t_gt.to(device=device, dtype=torch.float32)
-            # s_gt = s_gt.to(device=device, dtype=torch.float32)
 
             with torch.no_grad():
                 imgs_pred = net(imgs)
-                # loss = mae_loss.compute(imgs_pred, torch.cat((awb_gt, t_gt, s_gt), dim=1))
                 loss = mae_loss.compute(imgs_pred, awb_gt)
                 mae = mae + loss
 
